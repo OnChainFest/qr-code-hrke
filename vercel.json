@@ -1,5 +1,8 @@
 {
   "buildCommand": "next build",
   "outputDirectory": ".next",
-  "cleanUrls": true
+  "cleanUrls": true,
+  "redirects": [
+    { "source": "/", "destination": "/promo-register", "permanent": false }
+  ]
 }
