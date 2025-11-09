@@ -61,8 +61,9 @@ export default async function handler(req, res) {
 
     // 1) Guardar en Supabase
     const { error } = await supabase
-      .from('promo_jungle_registrations')
-      .insert([{ name, email, coupon, promo }]);
+  .from('promo_jungle_registrations')
+  .insert([{ name, email, coupon, promo }], { ignoreDuplicates: true });
+
 
     if (error) {
       console.error('Supabase insert error:', error);
