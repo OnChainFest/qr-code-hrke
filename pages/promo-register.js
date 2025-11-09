@@ -1,88 +1,85 @@
-import dynamic from 'next/dynamic';
-import { useMemo, useState } from 'react';
+// pages/api/promo-register.js
+import { createClient } from '@supabase/supabase-js';
 
-function PromoRegister() {
-  const [name, setName]   = useState('');
-  const [email, setEmail] = useState('');
-  const [status, setStatus] = useState('idle'); // idle | loading | ok | error
-  const [msg, setMsg] = useState('');
+function need(name) {
+  const v = process.env[name];
+  if (!v) throw new Error(`ENV ${name} missing`);
+  return v;
+}
 
-  // Solo usa window en cliente
-  const params = useMemo(
-    () => new URLSearchParams(typeof window !== 'undefined' ? window.location.search : ''),
-    []
-  );
-  const coupon = params.get('coupon') || 'BLKJUNGLE';
-  const promo  = params.get('promo')  || 'JUNGLE';
+const supabase = createClient(need('SUPABASE_URL'), need('SUPABASE_SERVICE_ROLE_KEY'));
 
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    if (!name.trim() || !email.trim()) {
-      setStatus('error'); setMsg('Por favor completá nombre y correo.');
-      return;
-    }
-    setStatus('loading'); setMsg('');
+async function sendEmailJS({ name, email, coupon, promo }) {
+  // Usa variables privadas; si no están, cae a las públicas
+  const service_id =
+    process.env.EMAILJS_SERVICE_ID || process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
+  const template_id =
+    process.env.EMAILJS_TEMPLATE_ID || process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID;
+  const user_id =
+    process.env.EMAILJS_PUBLIC_KEY ||
+    process.env.NEXT_PUBLIC_EMAILJS_USER_ID ||
+    process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
 
-    try {
-      const r = await fetch('/api/promo-register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, coupon, promo })
-      });
-      const data = await r.json();
-      if (!r.ok || !data.ok) throw new Error(data.error || 'Error');
+  if (!service_id || !template_id || !user_id) {
+    console.warn('[emailjs] faltan env (service_id/template_id/user_id), se omite envío');
+    return;
+  }
 
-      setStatus('ok'); setMsg('¡Gracias! Tu registro fue recibido.');
-      setName(''); setEmail('');
-    } catch (err) {
-      setStatus('error'); setMsg('No pudimos enviar el registro. Intenta de nuevo.');
+  const payload = {
+    service_id,
+    template_id,
+    user_id, // public/user key
+    template_params: {
+      // ⚠️ los nombres deben existir en tu template de EmailJS
+      name,
+      email,
+      coupon,
+      promo
     }
   };
 
-  return (
-    <main style={{ minHeight:'100vh', display:'grid', placeItems:'center',
-                   background:'linear-gradient(135deg,#00C4C7 0%,#000 100%)',
-                   color:'#fff', padding:24, fontFamily:'Rubik, system-ui, Arial, sans-serif' }}>
-      <div style={{ width:'100%', maxWidth:520, background:'rgba(0,0,0,.35)', borderRadius:16, padding:24 }}>
-        <h1 style={{ fontSize:28, marginBottom:8 }}>HRKey – Promo JUNGLE</h1>
-        <p style={{ opacity:.9, marginBottom:16 }}>Ingresá tus datos para activar la promoción.</p>
+  const r = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
 
-        <form onSubmit={onSubmit} style={{ display:'grid', gap:12 }}>
-          <label style={{ display:'grid', gap:6 }}>
-            <span>Nombre</span>
-            <input value={name} onChange={e=>setName(e.target.value)} placeholder="Tu nombre"
-                   style={inputStyle} required />
-          </label>
-          <label style={{ display:'grid', gap:6 }}>
-            <span>Correo</span>
-            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="tu@correo.com"
-                   style={inputStyle} required />
-          </label>
-
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-            <div><div style={tagLabel}>Cupón</div><div style={tagValue}>{coupon}</div></div>
-            <div><div style={tagLabel}>Promo</div><div style={tagValue}>{promo}</div></div>
-          </div>
-
-          <button type="submit" disabled={status==='loading'}
-                  style={{ background:'#fff', color:'#00C4C7', fontWeight:700,
-                           padding:'12px 16px', borderRadius:10, border:'none', cursor:'pointer' }}>
-            {status==='loading' ? 'Enviando...' : 'Registrar'}
-          </button>
-
-          {status==='ok' && <div style={{ marginTop:4, background:'rgba(0,128,0,.2)', padding:10, borderRadius:8 }}>{msg}</div>}
-          {status==='error' && <div style={{ marginTop:4, background:'rgba(255,0,0,.25)', padding:10, borderRadius:8 }}>{msg}</div>}
-        </form>
-      </div>
-    </main>
-  );
+  if (!r.ok) {
+    const txt = await r.text().catch(() => '');
+    throw new Error(`EmailJS error ${r.status}: ${txt}`);
+  }
 }
 
-const inputStyle = { padding:'12px 14px', borderRadius:10, border:'1px solid rgba(255,255,255,.3)',
-  background:'rgba(255,255,255,.1)', color:'#fff', outline:'none' };
-const tagLabel  = { fontSize:12, opacity:.8, marginBottom:4 };
-const tagValue  = { padding:'8px 10px', borderRadius:8, border:'1px dashed rgba(255,255,255,.35)',
-  fontFamily:'ui-monospace, Menlo, Consolas, monospace', opacity:.95 };
+export default async function handler(req, res) {
+  if (req.method !== 'POST')
+    return res.status(405).json({ ok: false, error: 'Method not allowed' });
 
-// 👇 Exporta la página desactivando SSR
-export default dynamic(() => Promise.resolve(PromoRegister), { ssr: false });
+  try {
+    const { name, email, coupon, promo } = req.body || {};
+    if (!name || !email)
+      return res.status(400).json({ ok: false, error: 'Nombre y correo son requeridos' });
+
+    // 1) Guardar en Supabase
+    const { error } = await supabase
+      .from('promo_jungle_registrations')
+      .insert([{ name, email, coupon, promo }]);
+
+    if (error) {
+      console.error('Supabase insert error:', error);
+      return res.status(500).json({ ok: false, error: 'DB insert failed' });
+    }
+
+    // 2) Enviar email (si falla, no rompemos el registro)
+    try {
+      await sendEmailJS({ name, email, coupon, promo });
+    } catch (mailErr) {
+      console.error('[emailjs] envío falló:', mailErr);
+      // no hacemos return 500 a propósito; el usuario ya quedó registrado
+    }
+
+    return res.status(200).json({ ok: true });
+  } catch (e) {
+    console.error('Handler error:', e);
+    return res.status(500).json({ ok: false, error: e.message || 'Unexpected error' });
+  }
+}
