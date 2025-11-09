@@ -1,4 +1,3 @@
-cat > package.json << 'EOF'
 {
   "name": "hrkey-promo-jungle",
   "version": "1.0.0",
@@ -16,4 +15,3 @@ cat > package.json << 'EOF'
     "emailjs-com": "^3.2.0"
   }
 }
-EOF
