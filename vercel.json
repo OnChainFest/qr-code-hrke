@@ -1,8 +1,15 @@
 {
-  "buildCommand": "next build",
-  "outputDirectory": ".next",
-  "cleanUrls": true,
   "redirects": [
-    { "source": "/", "destination": "/promo-register", "permanent": false }
+    {
+      "source": "/auth",
+      "has": [{ "type": "query", "key": "coupon" }],
+      "destination": "https://qr-code-hrke.vercel.app/promo-register?coupon=:coupon&promo=JUNGLE",
+      "permanent": false
+    },
+    {
+      "source": "/auth",
+      "destination": "https://qr-code-hrke.vercel.app/promo-register?promo=JUNGLE",
+      "permanent": false
+    }
   ]
 }
